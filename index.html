@@ -1,0 +1,140 @@
+from flask import Flask, render_template_string, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'theri_secret_key_123'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///theri_school.db'
+db = SQLAlchemy(app)
+
+# --- DATABASE MODELS ---
+class Student(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    surname = db.Column(db.String(50), nullable=False)
+    first_name = db.Column(db.String(50), nullable=False)
+    second_name = db.Column(db.String(50))
+    password = db.Column(db.String(200), nullable=False)
+
+class Staff(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.String(20), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+
+# --- HTML TEMPLATES (Combined) ---
+HTML_LAYOUT = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Theri Secondary Portal</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        .nav { background: #2c3e50; color: white; width: 100%; padding: 10px; text-align: center; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-top: 20px; width: 350px; }
+        input, select { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn { background: #3498db; color: white; border: none; padding: 10px; width: 100%; cursor: pointer; border-radius: 4px; }
+        .btn-staff { background: #e74c3c; margin-top: 10px; }
+        .strength-meter { height: 5px; background: #ddd; margin-top: -5px; margin-bottom: 10px; }
+        .weak { background: red; width: 30%; } .fair { background: orange; width: 60%; } .strong { background: green; width: 100%; }
+        .flash { color: red; font-size: 0.8em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="nav"><h2>Theri Secondary School Portal</h2></div>
+    {% with messages = get_flashed_messages() %}{% if messages %}
+        {% for message in messages %}<p class="flash">{{ message }}</p>{% endfor %}
+    {% endif %}{% endwith %}
+    {% block content %}{% endblock %}
+    <script>
+        function checkPass(val) {
+            let m = document.getElementById('meter');
+            m.className = 'strength-meter';
+            if(val.length > 8) m.classList.add('strong');
+            else if(val.length > 4) m.classList.add('fair');
+            else if(val.length > 0) m.classList.add('weak');
+        }
+        function toggle(id) {
+            let x = document.getElementById(id);
+            x.type = x.type === "password" ? "text" : "password";
+        }
+    </script>
+</body>
+</html>
+"""
+
+# --- ROUTES ---
+@app.route('/')
+def index():
+    return render_template_string(HTML_LAYOUT + """
+    {% block content %}
+    <div class="container">
+        <h3>Student Registration</h3>
+        <form method="POST" action="/register_student">
+            <input name="surname" placeholder="Surname" required>
+            <input name="fname" placeholder="First Name" required>
+            <input name="sname" placeholder="Second Name">
+            <div style="position:relative;">
+                <input type="password" name="password" id="p1" placeholder="Password" oninput="checkPass(this.value)" required>
+                <input type="checkbox" onclick="toggle('p1')" style="width:20px; position:absolute; right:10px; top:12px;">
+            </div>
+            <div id="meter" class="strength-meter"></div>
+            <input type="password" name="confirm" id="p2" placeholder="Confirm Password" required>
+            <button class="btn">Register as Student</button>
+        </form>
+        <hr>
+        <button class="btn btn-staff" onclick="location.href='/staff_login'">Staff Dashboard</button>
+    </div>
+    {% endblock %}
+    """)
+
+@app.route('/register_student', methods=['POST'])
+def reg_student():
+    surname = request.form.get('surname')
+    fname = request.form.get('fname')
+    pwd = request.form.get('password')
+    
+    # Check if exists
+    exists = Student.query.filter_by(surname=surname, first_name=fname).first()
+    if exists:
+        flash("Student already registered!")
+        return redirect(url_for('index'))
+    
+    new_student = Student(surname=surname, first_name=fname, second_name=request.form.get('sname'),
+                          password=generate_password_hash(pwd))
+    db.session.add(new_student)
+    db.session.commit()
+    flash("Student Registered Successfully!")
+    return redirect(url_for('index'))
+
+@app.route('/staff_login')
+def staff_dashboard():
+    return render_template_string(HTML_LAYOUT + """
+    {% block content %}
+    <div class="container">
+        <h3>Staff Registration (Admin)</h3>
+        <form method="POST" action="/register_staff">
+            <input name="staff_id" placeholder="Staff ID Number" required>
+            <input name="name" placeholder="Full Name" required>
+            <input type="password" name="password" placeholder="System Password" required>
+            <button class="btn btn-staff">Add Staff Member</button>
+        </form>
+    app.run(debug=True)
+    app.run(debug=True)
+        <p><a href="/">Back to Student Portal</a></p
+    </div>
+    {% endblock %}
+    """)
+
+@app.route('/register_staff', methods=['POST'])
+def reg_staff():
+    new_staff = Staff(staff_id=request.form.get('staff_id'), name=request.form.get('name'),
+                      password=generate_password_hash(request.form.get('password')))
+    db.session.add(new_staff)
+    db.session.commit()
+    flash("Staff Member Added!")
+    return redirect(url_for('staff_dashboard'))
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
